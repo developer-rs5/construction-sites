@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>construct · dark site manager</title>
-    <!-- Chart.js (vanilla) -->
+    <!-- Chart.js & html2canvas -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -90,7 +91,6 @@
             max-height: 90vh;
             color: #e3e9f2;
         }
-        /* header with site selector */
         .site-header {
             display: flex;
             align-items: center;
@@ -260,7 +260,38 @@
         .delete-btn:hover {
             color: #f87171;
         }
-        /* modal dark */
+        /* attendance month table */
+        .attendance-month-table {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        .attendance-month-table table {
+            min-width: 800px;
+        }
+        .attendance-month-table th, .attendance-month-table td {
+            text-align: center;
+            vertical-align: middle;
+        }
+        .attendance-month-table td {
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.1s;
+        }
+        .attendance-month-table td.present {
+            background: #1a4731;
+            color: #a7f3d0;
+        }
+        .attendance-month-table td.absent {
+            background: #4c1e1e;
+            color: #fecaca;
+        }
+        .attendance-month-table td.half {
+            background: #7b5e1a;
+            color: #fde68a;
+        }
+        .attendance-month-table td:hover {
+            filter: brightness(1.3);
+        }
         .modal {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -368,11 +399,9 @@
         let reports = JSON.parse(localStorage.getItem(STORAGE_KEYS.REPORTS)) || [];
         let materials = JSON.parse(localStorage.getItem(STORAGE_KEYS.MATERIALS)) || [];
 
-        // ensure materials & reports have siteId (migration)
         materials = materials.map(m => ({ siteId: m.siteId || (sites[0]?.id || 'unknown'), ...m }));
         reports = reports.map(r => ({ siteId: r.siteId || (sites[0]?.id || 'unknown'), ...r }));
 
-        // current selected siteId (first site or null)
         let currentSiteId = sites.length > 0 ? sites[0].id : null;
 
         // modal control
@@ -381,7 +410,6 @@
         modalClose.onclick = () => modal.classList.remove('show');
         window.onclick = (e) => { if (e.target === modal) modal.classList.remove('show'); };
 
-        // helper: save all
         function saveAll() {
             localStorage.setItem(STORAGE_KEYS.SITES, JSON.stringify(sites));
             localStorage.setItem(STORAGE_KEYS.WORKERS, JSON.stringify(workers));
@@ -392,7 +420,6 @@
 
         function genId() { return Date.now() + '-' + Math.random().toString(36).substring(2, 10); }
 
-        // ---------- helper: compute per worker attendance stats ----------
         function getWorkerAttendanceStats(workerId) {
             let present = 0, absent = 0, half = 0;
             attendance.filter(a => a.workerId === workerId).forEach(a => {
@@ -403,7 +430,6 @@
             return { present, absent, half };
         }
 
-        // ---------- pending salary for a worker ----------
         function getWorkerPending(worker) {
             const stats = getWorkerAttendanceStats(worker.id);
             const days = stats.present + (stats.half * 0.5);
@@ -412,23 +438,19 @@
             return Math.max(0, earned - advance);
         }
 
-        // ---------- total pending salary for current site ----------
         function totalPendingBySite(siteId) {
             return workers.filter(w => w.siteId === siteId).reduce((sum, w) => sum + getWorkerPending(w), 0);
         }
 
-        // ---------- material expenses for site ----------
         function materialExpensesBySite(siteId) {
             return materials.filter(m => m.siteId === siteId).reduce((acc, m) => acc + (m.subtotal || 0), 0);
         }
 
-        // ---------- absent today count for site ----------
         function absentTodayBySite(siteId) {
             const today = new Date().toISOString().split('T')[0];
             return attendance.filter(a => a.siteId === siteId && a.date === today && a.status === 'absent').length;
         }
 
-        // ---------- render site header with selector ----------
         function renderSiteHeader() {
             const headerDiv = document.getElementById('siteHeader');
             let options = '<option value="">-- no site --</option>';
@@ -452,7 +474,6 @@
             });
         }
 
-        // sidebar navigation
         let currentPage = 'siteDashboard';
         function setActivePage(page) {
             currentPage = page;
@@ -469,7 +490,7 @@
 
         function renderPage(page) {
             setActivePage(page);
-            renderSiteHeader();  // refresh header (keeps selector)
+            renderSiteHeader();
             const container = document.getElementById('pageContent');
             if (!container) return;
 
@@ -482,7 +503,7 @@
             else if (page === 'settings') renderSettings(container);
         }
 
-        // ---------- SITE DASHBOARD (per site) ----------
+        // ---------- SITE DASHBOARD ----------
         function renderSiteDashboard(container) {
             if (!currentSiteId || !sites.find(s => s.id === currentSiteId)) {
                 container.innerHTML = `<div class="action-card">⚠️ Select or create a site first.</div>`;
@@ -507,7 +528,6 @@
                 </div>
                 <p class="footer-main">🔍 Site summary – all data local.</p>
             `;
-            // simple bar chart for present/absent stats (all workers aggregated)
             const allWorkers = workers.filter(w => w.siteId === currentSiteId);
             let totalPresent = 0, totalAbsent = 0, totalHalf = 0;
             allWorkers.forEach(w => {
@@ -583,7 +603,6 @@
                 workers.push(newWorker); saveAll(); renderWorkers(container);
             });
 
-            // delete
             document.querySelectorAll('[data-deleteworker]').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const id = e.target.dataset.deleteworker;
@@ -592,7 +611,6 @@
                     saveAll(); renderWorkers(container);
                 });
             });
-            // edit worker
             document.querySelectorAll('[data-editworker]').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const id = e.target.dataset.editworker;
@@ -618,12 +636,10 @@
             });
         }
 
-        // ---------- open worker stats modal (global function) ----------
         window.openWorkerStats = function(workerId) {
             const worker = workers.find(w => w.id === workerId);
             if (!worker) return;
             const stats = getWorkerAttendanceStats(workerId);
-            const total = stats.present + stats.absent + stats.half || 1;
             const modal = document.getElementById('editModal');
             document.getElementById('modalTitle').innerText = `${worker.name} attendance`;
             document.getElementById('modalBody').innerHTML = `
@@ -650,49 +666,136 @@
             }, 50);
         };
 
-        // ---------- ATTENDANCE (can mark any date) ----------
+        // ---------- ATTENDANCE (month view with export & inline edit) ----------
         function renderAttendance(container) {
-            if (!currentSiteId) return;
-            const today = new Date().toISOString().split('T')[0];
-            const siteWorkers = workers.filter(w => w.siteId === currentSiteId);
-            const html = `
+            if (!currentSiteId) {
+                container.innerHTML = `<div class="action-card">⚠️ No site selected</div>`;
+                return;
+            }
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const defaultMonth = `${year}-${month}`;
+
+            container.innerHTML = `
                 <div class="action-card">
                     <div class="form-row">
-                        <div class="form-group"><label>Date</label><input type="date" id="attDate" value="${today}"></div>
-                        <button class="btn" id="loadAttendance">Load workers</button>
+                        <div class="form-group">
+                            <label>Select month</label>
+                            <input type="month" id="attMonth" value="${defaultMonth}">
+                        </div>
+                        <button class="btn-primary" id="loadMonthBtn">Load month</button>
+                        <button class="btn-outline" id="exportAttendanceImg">📸 Export as image</button>
                     </div>
+                    <div id="monthAttendanceContainer" class="attendance-month-table"></div>
                 </div>
-                <div id="attendanceMarkArea"></div>
             `;
-            container.innerHTML = html;
-            document.getElementById('loadAttendance')?.addEventListener('click', () => {
-                const date = document.getElementById('attDate')?.value;
-                if (!date) return;
-                const existing = attendance.filter(a => a.siteId === currentSiteId && a.date === date);
-                const statusMap = {};
-                existing.forEach(e => statusMap[e.workerId] = e.status);
-                let inner = `<div class="action-card"><h3>Mark attendance for ${date}</h3>`;
-                siteWorkers.forEach(w => {
-                    const cur = statusMap[w.id] || 'present';
-                    inner += `<div class="attendance-row" style="display:flex; align-items:center; gap:10px; background:#1f2a3f; padding:10px 20px; border-radius:50px; margin:8px 0;">
-                        <span style="flex:1;">${w.name} (${w.role})</span>
-                        <label><input type="radio" name="att-${w.id}" value="present" ${cur==='present'?'checked':''}> Present</label>
-                        <label><input type="radio" name="att-${w.id}" value="absent" ${cur==='absent'?'checked':''}> Absent</label>
-                        <label><input type="radio" name="att-${w.id}" value="half" ${cur==='half'?'checked':''}> Half</label>
-                    </div>`;
+
+            function loadMonth() {
+                const monthStr = document.getElementById('attMonth')?.value;
+                if (!monthStr) return;
+                const [year, month] = monthStr.split('-').map(Number);
+                const date = new Date(year, month, 0); // last day of month
+                const daysInMonth = date.getDate();
+                const dates = [];
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const y = year;
+                    const m = String(month).padStart(2, '0');
+                    const day = String(d).padStart(2, '0');
+                    dates.push(`${y}-${m}-${day}`);
+                }
+
+                const siteWorkers = workers.filter(w => w.siteId === currentSiteId);
+                if (siteWorkers.length === 0) {
+                    document.getElementById('monthAttendanceContainer').innerHTML = '<p>No workers for this site.</p>';
+                    return;
+                }
+
+                // Build a map for quick lookup: workerId -> date -> status
+                const attMap = {};
+                attendance.forEach(a => {
+                    if (a.siteId === currentSiteId && dates.includes(a.date)) {
+                        if (!attMap[a.workerId]) attMap[a.workerId] = {};
+                        attMap[a.workerId][a.date] = a.status;
+                    }
                 });
-                inner += `<button class="btn-primary" id="saveAttendanceBtn">Save attendance</button></div>`;
-                document.getElementById('attendanceMarkArea').innerHTML = inner;
-                document.getElementById('saveAttendanceBtn')?.addEventListener('click', () => {
-                    const date = document.getElementById('attDate')?.value;
-                    attendance = attendance.filter(a => !(a.siteId === currentSiteId && a.date === date));
-                    siteWorkers.forEach(w => {
-                        const selected = document.querySelector(`input[name="att-${w.id}"]:checked`)?.value || 'absent';
-                        attendance.push({ id: genId(), siteId: currentSiteId, workerId: w.id, date, status: selected });
+
+                let html = '<table><thead><tr><th>Worker</th>';
+                dates.forEach(d => {
+                    const [y,m,day] = d.split('-');
+                    html += `<th>${day}/${m}</th>`;
+                });
+                html += '</tr></thead><tbody>';
+
+                siteWorkers.forEach(w => {
+                    html += '<tr>';
+                    html += `<td style="text-align:left; font-weight:600;">${w.name}</td>`;
+                    dates.forEach(date => {
+                        const status = attMap[w.id]?.[date] || 'absent'; // default absent
+                        let statusClass = '';
+                        if (status === 'present') statusClass = 'present';
+                        else if (status === 'absent') statusClass = 'absent';
+                        else if (status === 'half') statusClass = 'half';
+                        const letter = status === 'present' ? 'P' : (status === 'half' ? 'H' : 'A');
+                        html += `<td class="${statusClass}" data-workerid="${w.id}" data-date="${date}" data-status="${status}">${letter}</td>`;
                     });
-                    saveAll(); renderAttendance(container);
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+                document.getElementById('monthAttendanceContainer').innerHTML = html;
+
+                // Add click handlers for each cell to cycle status
+                document.querySelectorAll('#monthAttendanceContainer td[data-workerid]').forEach(cell => {
+                    cell.addEventListener('click', (e) => {
+                        const workerId = cell.dataset.workerid;
+                        const date = cell.dataset.date;
+                        const current = cell.dataset.status;
+                        // cycle: present -> absent -> half -> present ...
+                        let next = 'present';
+                        if (current === 'present') next = 'absent';
+                        else if (current === 'absent') next = 'half';
+                        else if (current === 'half') next = 'present';
+
+                        // Update attendance array
+                        // remove old record for this worker+date
+                        attendance = attendance.filter(a => !(a.workerId === workerId && a.date === date));
+                        attendance.push({ id: genId(), siteId: currentSiteId, workerId, date, status: next });
+                        saveAll();
+
+                        // Update cell appearance
+                        cell.dataset.status = next;
+                        cell.className = '';
+                        if (next === 'present') {
+                            cell.classList.add('present');
+                            cell.innerText = 'P';
+                        } else if (next === 'absent') {
+                            cell.classList.add('absent');
+                            cell.innerText = 'A';
+                        } else {
+                            cell.classList.add('half');
+                            cell.innerText = 'H';
+                        }
+                    });
+                });
+            }
+
+            document.getElementById('loadMonthBtn')?.addEventListener('click', loadMonth);
+            document.getElementById('exportAttendanceImg')?.addEventListener('click', () => {
+                const container = document.getElementById('monthAttendanceContainer');
+                if (!container.children.length) {
+                    alert('Load a month first');
+                    return;
+                }
+                html2canvas(container).then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = `attendance-${currentSiteId}-${document.getElementById('attMonth').value}.png`;
+                    link.href = canvas.toDataURL();
+                    link.click();
                 });
             });
+
+            // Auto-load current month on first render
+            setTimeout(loadMonth, 50);
         }
 
         // ---------- MATERIALS (per site) ----------
@@ -729,14 +832,12 @@
                 });
                 saveAll(); renderMaterials(container);
             });
-            // delete
             document.querySelectorAll('[data-deletemat]').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     materials = materials.filter(m => m.id !== e.target.dataset.deletemat);
                     saveAll(); renderMaterials(container);
                 });
             });
-            // edit material (simplified)
             document.querySelectorAll('[data-editmat]').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const id = e.target.dataset.editmat;
@@ -761,7 +862,6 @@
             });
         }
 
-        // short modal helper
         function showEditModal(title, bodyHtml) {
             document.getElementById('modalTitle').innerText = title;
             document.getElementById('modalBody').innerHTML = bodyHtml;
@@ -802,7 +902,6 @@
                     saveAll(); renderReports(container);
                 });
             });
-            // edit report (similar)
         }
 
         // SITES management (with edit)
@@ -850,7 +949,6 @@
                     saveAll(); renderSitesManagement(container); renderSiteHeader();
                 });
             });
-            // edit site
             document.querySelectorAll('[data-editsite]').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const id = e.target.dataset.editsite;
@@ -876,7 +974,7 @@
             });
         }
 
-        // SETTINGS (import/export unchanged, dark themed)
+        // SETTINGS
         function renderSettings(container) {
             container.innerHTML = `
                 <div class="page-header"><h1>⚙️ Settings</h1></div>
@@ -919,7 +1017,6 @@
             });
         }
 
-        // navigation
         document.querySelectorAll('.nav-item').forEach(el => {
             el.addEventListener('click', (e) => {
                 const page = e.target.closest('.nav-item').dataset.page;
@@ -927,7 +1024,6 @@
             });
         });
 
-        // initial render
         renderPage('siteDashboard');
     })();
 </script>
